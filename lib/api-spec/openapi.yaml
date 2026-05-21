@@ -249,6 +249,8 @@ components:
           type: number
         sellMarketCapUsd:
           type: number
+        buyAmountUsd:
+          type: number
         maxPositions:
           type: integer
         slippageBps:
@@ -260,6 +262,7 @@ components:
         - walletAddress
         - buyMarketCapUsd
         - sellMarketCapUsd
+        - buyAmountUsd
         - maxPositions
         - slippageBps
         - updatedAt
@@ -272,6 +275,8 @@ components:
         buyMarketCapUsd:
           type: number
         sellMarketCapUsd:
+          type: number
+        buyAmountUsd:
           type: number
         maxPositions:
           type: integer

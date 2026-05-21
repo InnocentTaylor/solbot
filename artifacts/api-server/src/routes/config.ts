@@ -20,6 +20,7 @@ function serializeConfig(config: typeof botConfigTable.$inferSelect) {
     walletAddress: config.walletAddress,
     buyMarketCapUsd: parseFloat(String(config.buyMarketCapUsd)),
     sellMarketCapUsd: parseFloat(String(config.sellMarketCapUsd)),
+    buyAmountUsd: parseFloat(String(config.buyAmountUsd)),
     maxPositions: config.maxPositions,
     slippageBps: config.slippageBps,
     updatedAt: config.updatedAt.toISOString(),
@@ -46,6 +47,7 @@ router.put("/config", async (req, res) => {
   if (body.walletAddress !== undefined) updates.walletAddress = body.walletAddress;
   if (body.buyMarketCapUsd !== undefined) updates.buyMarketCapUsd = String(body.buyMarketCapUsd);
   if (body.sellMarketCapUsd !== undefined) updates.sellMarketCapUsd = String(body.sellMarketCapUsd);
+  if (body.buyAmountUsd !== undefined) updates.buyAmountUsd = String(body.buyAmountUsd);
   if (body.maxPositions !== undefined) updates.maxPositions = body.maxPositions;
   if (body.slippageBps !== undefined) updates.slippageBps = body.slippageBps;
 

@@ -60,6 +60,7 @@ export const GetConfigResponse = zod.object({
   "walletAddress": zod.string().nullable(),
   "buyMarketCapUsd": zod.number(),
   "sellMarketCapUsd": zod.number(),
+  "buyAmountUsd": zod.number(),
   "maxPositions": zod.number(),
   "slippageBps": zod.number(),
   "updatedAt": zod.string()
@@ -73,6 +74,7 @@ export const UpdateConfigBody = zod.object({
   "walletAddress": zod.string().optional(),
   "buyMarketCapUsd": zod.number().optional(),
   "sellMarketCapUsd": zod.number().optional(),
+  "buyAmountUsd": zod.number().optional(),
   "maxPositions": zod.number().optional(),
   "slippageBps": zod.number().optional()
 })
@@ -82,6 +84,7 @@ export const UpdateConfigResponse = zod.object({
   "walletAddress": zod.string().nullable(),
   "buyMarketCapUsd": zod.number(),
   "sellMarketCapUsd": zod.number(),
+  "buyAmountUsd": zod.number(),
   "maxPositions": zod.number(),
   "slippageBps": zod.number(),
   "updatedAt": zod.string()

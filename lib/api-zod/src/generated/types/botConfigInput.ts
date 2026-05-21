@@ -10,6 +10,7 @@ export interface BotConfigInput {
   walletAddress?: string;
   buyMarketCapUsd?: number;
   sellMarketCapUsd?: number;
+  buyAmountUsd?: number;
   maxPositions?: number;
   slippageBps?: number;
 }

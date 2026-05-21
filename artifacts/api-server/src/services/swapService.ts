@@ -8,7 +8,6 @@ import {
 import bs58 from "bs58";
 import { logger } from "../lib/logger";
 
-const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const RPC_ENDPOINT = "https://api.mainnet-beta.solana.com";
 
@@ -32,6 +31,23 @@ export async function getSOLBalance(): Promise<number> {
   const kp = getKeypair();
   const lamports = await connection.getBalance(kp.publicKey);
   return lamports / LAMPORTS_PER_SOL;
+}
+
+export async function getSolPriceUsd(): Promise<number> {
+  try {
+    const res = await fetch(
+      "https://api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112",
+      { headers: { Accept: "application/json" } },
+    );
+    if (!res.ok) return 0;
+    const data = (await res.json()) as {
+      data: { [mint: string]: { price: number } };
+    };
+    return data.data[SOL_MINT]?.price ?? 0;
+  } catch (err) {
+    logger.error({ err }, "Failed to fetch SOL price");
+    return 0;
+  }
 }
 
 interface JupiterQuote {
@@ -67,10 +83,7 @@ async function getQuote(
   return res.json() as Promise<JupiterQuote>;
 }
 
-async function executeSwap(
-  quote: JupiterQuote,
-  slippageBps: number,
-): Promise<string | null> {
+async function executeSwap(quote: JupiterQuote): Promise<string | null> {
   const kp = getKeypair();
   const connection = new Connection(RPC_ENDPOINT, "confirmed");
 
@@ -115,22 +128,35 @@ async function executeSwap(
   return sig;
 }
 
-export async function buyToken(
+export async function buyTokenWithSOL(
   tokenMint: string,
-  usdcAmount: number,
+  usdAmount: number,
   slippageBps: number,
-): Promise<{ signature: string | null; amountOut: number }> {
+): Promise<{ signature: string | null; amountOut: number; solSpent: number }> {
   try {
-    const amountIn = Math.floor(usdcAmount * 1_000_000);
-    const quote = await getQuote(USDC_MINT, tokenMint, amountIn, slippageBps);
-    if (!quote) return { signature: null, amountOut: 0 };
+    const solPrice = await getSolPriceUsd();
+    if (solPrice <= 0) {
+      logger.error("Could not fetch SOL price — aborting buy");
+      return { signature: null, amountOut: 0, solSpent: 0 };
+    }
+
+    const solAmount = usdAmount / solPrice;
+    const lamports = Math.floor(solAmount * LAMPORTS_PER_SOL);
+
+    logger.info(
+      { usdAmount, solAmount, lamports, slippageBps },
+      "Buying with SOL via Jupiter",
+    );
+
+    const quote = await getQuote(SOL_MINT, tokenMint, lamports, slippageBps);
+    if (!quote) return { signature: null, amountOut: 0, solSpent: 0 };
 
     const amountOut = parseFloat(quote.outAmount);
-    const sig = await executeSwap(quote, slippageBps);
-    return { signature: sig, amountOut };
+    const sig = await executeSwap(quote);
+    return { signature: sig, amountOut, solSpent: solAmount };
   } catch (err) {
-    logger.error({ err, tokenMint }, "buyToken error");
-    return { signature: null, amountOut: 0 };
+    logger.error({ err, tokenMint }, "buyTokenWithSOL error");
+    return { signature: null, amountOut: 0, solSpent: 0 };
   }
 }
 
@@ -139,18 +165,18 @@ export async function sellToken(
   tokenAmount: number,
   tokenDecimals: number,
   slippageBps: number,
-): Promise<{ signature: string | null; amountOut: number }> {
+): Promise<{ signature: string | null; solReceived: number }> {
   try {
     const amountIn = Math.floor(tokenAmount * Math.pow(10, tokenDecimals));
-    const quote = await getQuote(tokenMint, USDC_MINT, amountIn, slippageBps);
-    if (!quote) return { signature: null, amountOut: 0 };
+    const quote = await getQuote(tokenMint, SOL_MINT, amountIn, slippageBps);
+    if (!quote) return { signature: null, solReceived: 0 };
 
-    const amountOut = parseFloat(quote.outAmount) / 1_000_000;
-    const sig = await executeSwap(quote, slippageBps);
-    return { signature: sig, amountOut };
+    const solReceived = parseFloat(quote.outAmount) / LAMPORTS_PER_SOL;
+    const sig = await executeSwap(quote);
+    return { signature: sig, solReceived };
   } catch (err) {
     logger.error({ err, tokenMint }, "sellToken error");
-    return { signature: null, amountOut: 0 };
+    return { signature: null, solReceived: 0 };
   }
 }
 

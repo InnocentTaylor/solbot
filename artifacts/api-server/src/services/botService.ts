@@ -1,7 +1,7 @@
 import { db, botConfigTable, positionsTable, tradesTable, activityTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
-import { buyToken, sellToken, getTokenDecimals, getWalletPublicKey } from "./swapService";
+import { buyTokenWithSOL, sellToken, getTokenDecimals, getWalletPublicKey, getSolPriceUsd } from "./swapService";
 
 interface DexScreenerToken {
   chainId: string;
@@ -90,11 +90,14 @@ async function executeBuy(token: DexScreenerToken, config: typeof botConfigTable
   const priceUsd = parseFloat(token.priceUsd || "0");
   if (priceUsd <= 0) return;
 
-  const amountUsd = 100;
+  const amountUsd = parseFloat(String(config.buyAmountUsd));
 
-  logger.info({ token: token.baseToken.symbol, amountUsd }, "Attempting real buy via Jupiter");
+  logger.info(
+    { token: token.baseToken.symbol, amountUsd },
+    "Attempting real buy via Jupiter (SOL input)",
+  );
 
-  const { signature, amountOut } = await buyToken(
+  const { signature, amountOut, solSpent } = await buyTokenWithSOL(
     token.baseToken.address,
     amountUsd,
     config.slippageBps,
@@ -139,7 +142,7 @@ async function executeBuy(token: DexScreenerToken, config: typeof botConfigTable
   if (signature) {
     await logActivity(
       "buy_executed",
-      `Bought ${token.baseToken.symbol} at $${priceUsd.toFixed(8)} (mcap: $${(token.marketCap / 1000).toFixed(1)}K) — tx: ${signature.slice(0, 12)}...`,
+      `Bought ${token.baseToken.symbol} — spent $${amountUsd} (${solSpent.toFixed(4)} SOL) at mcap $${(token.marketCap / 1000).toFixed(1)}K — tx: ${signature.slice(0, 12)}...`,
       token.baseToken.symbol,
       token.baseToken.address,
     );
@@ -147,7 +150,7 @@ async function executeBuy(token: DexScreenerToken, config: typeof botConfigTable
   } else {
     await logActivity(
       "buy_failed",
-      `Buy failed for ${token.baseToken.symbol} — swap route unavailable or insufficient funds`,
+      `Buy failed for ${token.baseToken.symbol} — swap unavailable or insufficient SOL`,
       token.baseToken.symbol,
       token.baseToken.address,
     );
@@ -170,14 +173,17 @@ async function executeSell(
     .where(eq(positionsTable.id, position.id));
 
   const decimals = await getTokenDecimals(position.tokenAddress);
-  const { signature, amountOut } = await sellToken(
+  const { signature, solReceived } = await sellToken(
     position.tokenAddress,
     amountTokens,
     decimals,
     6,
   );
 
-  const actualAmountUsd = amountOut > 0 ? amountOut : amountTokens * currentPrice;
+  const solPrice = await getSolPriceUsd();
+  const actualAmountUsd = solReceived > 0 && solPrice > 0
+    ? solReceived * solPrice
+    : amountTokens * currentPrice;
   const entryUsd = parseFloat(position.amountUsd);
   const pnl = actualAmountUsd - entryUsd;
 
@@ -192,7 +198,9 @@ async function executeSell(
       currentMarketCapUsd: String(currentToken.marketCap),
       closedAt: signature ? new Date() : null,
       unrealizedPnlUsd: signature ? "0" : String(actualAmountUsd - entryUsd),
-      unrealizedPnlPct: signature ? "0" : String(entryUsd > 0 ? ((actualAmountUsd - entryUsd) / entryUsd) * 100 : 0),
+      unrealizedPnlPct: signature
+        ? "0"
+        : String(entryUsd > 0 ? ((actualAmountUsd - entryUsd) / entryUsd) * 100 : 0),
     })
     .where(eq(positionsTable.id, position.id));
 
@@ -214,7 +222,7 @@ async function executeSell(
   if (signature) {
     await logActivity(
       "sell_executed",
-      `Sold ${position.tokenSymbol} at $${currentPrice.toFixed(8)} — PnL: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} — tx: ${signature.slice(0, 12)}...`,
+      `Sold ${position.tokenSymbol} — received ${solReceived.toFixed(4)} SOL (~$${actualAmountUsd.toFixed(2)}) — PnL: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} — tx: ${signature.slice(0, 12)}...`,
       position.tokenSymbol,
       position.tokenAddress,
     );
@@ -351,9 +359,9 @@ export async function startBot(): Promise<void> {
 
   await logActivity(
     "bot_started",
-    `Bot started with wallet ${walletKey.slice(0, 8)}...${walletKey.slice(-4)} — live trading enabled`,
+    `Bot started — wallet ${walletKey.slice(0, 8)}...${walletKey.slice(-4)} — buying $2 SOL per trade`,
   );
-  logger.info({ wallet: walletKey }, "Bot started with live trading");
+  logger.info({ wallet: walletKey }, "Bot started with live SOL trading");
 
   await scanLoop();
 

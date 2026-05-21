@@ -2,7 +2,8 @@ import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { useGetConfig, useUpdateConfig } from "@workspace/api-client-react";
+import { useGetConfig, useUpdateConfig, getGetConfigQueryKey } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
@@ -10,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Save } from "lucide-react";
 
-// Validate Solana address format loosely
 const solanaAddressRegex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 const configSchema = z.object({
@@ -19,6 +19,7 @@ const configSchema = z.object({
     .regex(solanaAddressRegex, "Must be a valid Solana address (base58, 32-44 characters)"),
   buyMarketCapUsd: z.coerce.number().min(1000, "Minimum $1,000"),
   sellMarketCapUsd: z.coerce.number().min(2000, "Minimum $2,000"),
+  buyAmountUsd: z.coerce.number().min(0.01, "Minimum $0.01").max(10000, "Maximum $10,000"),
   maxPositions: z.coerce.number().min(1, "At least 1 position").max(10, "Max 10 positions"),
   slippageBps: z.coerce.number().min(1, "Min 1 BPS").max(1000, "Max 1000 BPS (10%)"),
 });
@@ -27,24 +28,26 @@ type ConfigFormValues = z.infer<typeof configSchema>;
 
 export default function Settings() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { data: config, isLoading } = useGetConfig();
-  
+
   const updateConfig = useUpdateConfig({
     mutation: {
       onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getGetConfigQueryKey() });
         toast({
           title: "Configuration Saved",
           description: "Bot settings have been updated successfully.",
         });
       },
-      onError: (error: any) => {
+      onError: (error: unknown) => {
         toast({
           title: "Error",
-          description: error?.message || "Failed to update configuration.",
+          description: (error as Error)?.message || "Failed to update configuration.",
           variant: "destructive",
         });
-      }
-    }
+      },
+    },
   });
 
   const form = useForm<ConfigFormValues>({
@@ -53,6 +56,7 @@ export default function Settings() {
       walletAddress: "",
       buyMarketCapUsd: 10000,
       sellMarketCapUsd: 35000,
+      buyAmountUsd: 2,
       maxPositions: 3,
       slippageBps: 100,
     },
@@ -64,6 +68,7 @@ export default function Settings() {
         walletAddress: config.walletAddress || "",
         buyMarketCapUsd: config.buyMarketCapUsd,
         sellMarketCapUsd: config.sellMarketCapUsd,
+        buyAmountUsd: config.buyAmountUsd,
         maxPositions: config.maxPositions,
         slippageBps: config.slippageBps,
       });
@@ -89,7 +94,7 @@ export default function Settings() {
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              
+
               <FormField
                 control={form.control}
                 name="walletAddress"
@@ -97,7 +102,12 @@ export default function Settings() {
                   <FormItem>
                     <FormLabel>Solana Wallet Address</FormLabel>
                     <FormControl>
-                      <Input placeholder="Enter your public key..." className="font-mono" {...field} />
+                      <Input
+                        data-testid="input-wallet-address"
+                        placeholder="Enter your public key..."
+                        className="font-mono"
+                        {...field}
+                      />
                     </FormControl>
                     <FormDescription>The wallet the bot will use to sign and send transactions.</FormDescription>
                     <FormMessage />
@@ -113,9 +123,9 @@ export default function Settings() {
                     <FormItem>
                       <FormLabel>Entry Market Cap (USD)</FormLabel>
                       <FormControl>
-                        <Input type="number" {...field} />
+                        <Input data-testid="input-buy-market-cap" type="number" {...field} />
                       </FormControl>
-                      <FormDescription>Target market cap to snipe.</FormDescription>
+                      <FormDescription>Target market cap to snipe a token.</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -128,9 +138,24 @@ export default function Settings() {
                     <FormItem>
                       <FormLabel>Exit Market Cap (USD)</FormLabel>
                       <FormControl>
-                        <Input type="number" {...field} />
+                        <Input data-testid="input-sell-market-cap" type="number" {...field} />
                       </FormControl>
                       <FormDescription>Target market cap to take profit.</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="buyAmountUsd"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Buy Amount (USD in SOL)</FormLabel>
+                      <FormControl>
+                        <Input data-testid="input-buy-amount" type="number" step="0.01" {...field} />
+                      </FormControl>
+                      <FormDescription>USD value of SOL to spend per buy. Currently $2.00.</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -143,7 +168,7 @@ export default function Settings() {
                     <FormItem>
                       <FormLabel>Max Concurrent Positions</FormLabel>
                       <FormControl>
-                        <Input type="number" {...field} />
+                        <Input data-testid="input-max-positions" type="number" {...field} />
                       </FormControl>
                       <FormDescription>Maximum number of tokens to hold at once.</FormDescription>
                       <FormMessage />
@@ -158,9 +183,9 @@ export default function Settings() {
                     <FormItem>
                       <FormLabel>Slippage (BPS)</FormLabel>
                       <FormControl>
-                        <Input type="number" {...field} />
+                        <Input data-testid="input-slippage" type="number" {...field} />
                       </FormControl>
-                      <FormDescription>Max slippage. 100 BPS = 1%.</FormDescription>
+                      <FormDescription>Max slippage tolerance. 100 BPS = 1%.</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -168,13 +193,14 @@ export default function Settings() {
               </div>
 
               <div className="pt-4 flex justify-end">
-                <Button 
-                  type="submit" 
+                <Button
+                  data-testid="button-save-config"
+                  type="submit"
                   disabled={updateConfig.isPending || isLoading}
                   className="bg-primary text-primary-foreground hover:bg-primary/90"
                 >
                   <Save className="mr-2 h-4 w-4" />
-                  Save Configuration
+                  {updateConfig.isPending ? "Saving..." : "Save Configuration"}
                 </Button>
               </div>
             </form>
