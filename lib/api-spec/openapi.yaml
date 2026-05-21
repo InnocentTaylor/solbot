@@ -1,22 +1,33 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Solana Meme Bot API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: bot
+    description: Bot control
+  - name: config
+    description: Bot configuration
+  - name: positions
+    description: Active positions
+  - name: trades
+    description: Trade history
+  - name: tokens
+    description: Token monitoring
+  - name: dashboard
+    description: Dashboard summaries
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +35,179 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /bot/status:
+    get:
+      operationId: getBotStatus
+      tags: [bot]
+      summary: Get bot running status
+      responses:
+        "200":
+          description: Bot status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotStatus"
+
+  /bot/start:
+    post:
+      operationId: startBot
+      tags: [bot]
+      summary: Start the bot
+      responses:
+        "200":
+          description: Bot started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotStatus"
+
+  /bot/stop:
+    post:
+      operationId: stopBot
+      tags: [bot]
+      summary: Stop the bot
+      responses:
+        "200":
+          description: Bot stopped
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotStatus"
+
+  /config:
+    get:
+      operationId: getConfig
+      tags: [config]
+      summary: Get bot configuration
+      responses:
+        "200":
+          description: Current configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotConfig"
+    put:
+      operationId: updateConfig
+      tags: [config]
+      summary: Update bot configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BotConfigInput"
+      responses:
+        "200":
+          description: Updated configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotConfig"
+
+  /positions:
+    get:
+      operationId: listPositions
+      tags: [positions]
+      summary: List active positions
+      responses:
+        "200":
+          description: List of positions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Position"
+
+  /positions/{id}:
+    get:
+      operationId: getPosition
+      tags: [positions]
+      summary: Get a specific position
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Position details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Position"
+
+  /trades:
+    get:
+      operationId: listTrades
+      tags: [trades]
+      summary: List trade history
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Trade history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Trade"
+
+  /tokens/watched:
+    get:
+      operationId: listWatchedTokens
+      tags: [tokens]
+      summary: List tokens currently being monitored
+      responses:
+        "200":
+          description: Watched tokens
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WatchedToken"
+
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard summary stats
+      responses:
+        "200":
+          description: Summary statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/activity:
+    get:
+      operationId: getRecentActivity
+      tags: [dashboard]
+      summary: Get recent bot activity log
+      responses:
+        "200":
+          description: Recent activity entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityEntry"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +218,250 @@ components:
       required:
         - status
 
+    BotStatus:
+      type: object
+      properties:
+        running:
+          type: boolean
+        startedAt:
+          type: ["string", "null"]
+        uptime:
+          type: ["integer", "null"]
+        tokensScanned:
+          type: integer
+        lastScanAt:
+          type: ["string", "null"]
+      required:
+        - running
+        - startedAt
+        - uptime
+        - tokensScanned
+        - lastScanAt
+
+    BotConfig:
+      type: object
+      properties:
+        id:
+          type: integer
+        walletAddress:
+          type: ["string", "null"]
+        buyMarketCapUsd:
+          type: number
+        sellMarketCapUsd:
+          type: number
+        maxPositions:
+          type: integer
+        slippageBps:
+          type: integer
+        updatedAt:
+          type: string
+      required:
+        - id
+        - walletAddress
+        - buyMarketCapUsd
+        - sellMarketCapUsd
+        - maxPositions
+        - slippageBps
+        - updatedAt
+
+    BotConfigInput:
+      type: object
+      properties:
+        walletAddress:
+          type: string
+        buyMarketCapUsd:
+          type: number
+        sellMarketCapUsd:
+          type: number
+        maxPositions:
+          type: integer
+        slippageBps:
+          type: integer
+
+    Position:
+      type: object
+      properties:
+        id:
+          type: integer
+        tokenAddress:
+          type: string
+        tokenSymbol:
+          type: string
+        tokenName:
+          type: string
+        entryMarketCapUsd:
+          type: number
+        currentMarketCapUsd:
+          type: ["number", "null"]
+        entryPriceUsd:
+          type: number
+        currentPriceUsd:
+          type: ["number", "null"]
+        amountTokens:
+          type: number
+        amountUsd:
+          type: number
+        unrealizedPnlUsd:
+          type: ["number", "null"]
+        unrealizedPnlPct:
+          type: ["number", "null"]
+        status:
+          type: string
+          enum: [open, closed, pending_sell]
+        openedAt:
+          type: string
+        closedAt:
+          type: ["string", "null"]
+      required:
+        - id
+        - tokenAddress
+        - tokenSymbol
+        - tokenName
+        - entryMarketCapUsd
+        - currentMarketCapUsd
+        - entryPriceUsd
+        - currentPriceUsd
+        - amountTokens
+        - amountUsd
+        - unrealizedPnlUsd
+        - unrealizedPnlPct
+        - status
+        - openedAt
+        - closedAt
+
+    Trade:
+      type: object
+      properties:
+        id:
+          type: integer
+        tokenAddress:
+          type: string
+        tokenSymbol:
+          type: string
+        tokenName:
+          type: string
+        type:
+          type: string
+          enum: [buy, sell]
+        amountUsd:
+          type: number
+        amountTokens:
+          type: number
+        priceUsd:
+          type: number
+        marketCapUsd:
+          type: number
+        txSignature:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [pending, confirmed, failed]
+        createdAt:
+          type: string
+        realizedPnlUsd:
+          type: ["number", "null"]
+      required:
+        - id
+        - tokenAddress
+        - tokenSymbol
+        - tokenName
+        - type
+        - amountUsd
+        - amountTokens
+        - priceUsd
+        - marketCapUsd
+        - txSignature
+        - status
+        - createdAt
+        - realizedPnlUsd
+
+    WatchedToken:
+      type: object
+      properties:
+        address:
+          type: string
+        symbol:
+          type: string
+        name:
+          type: string
+        marketCapUsd:
+          type: number
+        priceUsd:
+          type: number
+        volume24h:
+          type: number
+        priceChange24h:
+          type: number
+        liquidity:
+          type: number
+        pairAddress:
+          type: ["string", "null"]
+        dexId:
+          type: ["string", "null"]
+        firstDiscoveredAt:
+          type: string
+      required:
+        - address
+        - symbol
+        - name
+        - marketCapUsd
+        - priceUsd
+        - volume24h
+        - priceChange24h
+        - liquidity
+        - pairAddress
+        - dexId
+        - firstDiscoveredAt
+
+    DashboardSummary:
+      type: object
+      properties:
+        totalTrades:
+          type: integer
+        openPositions:
+          type: integer
+        totalRealizedPnlUsd:
+          type: number
+        totalUnrealizedPnlUsd:
+          type: number
+        winRate:
+          type: number
+        tokensWatched:
+          type: integer
+        botRunning:
+          type: boolean
+        walletAddress:
+          type: ["string", "null"]
+      required:
+        - totalTrades
+        - openPositions
+        - totalRealizedPnlUsd
+        - totalUnrealizedPnlUsd
+        - winRate
+        - tokensWatched
+        - botRunning
+        - walletAddress
+
+    ActivityEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [bot_started, bot_stopped, token_discovered, buy_executed, sell_executed, buy_failed, sell_failed, scan_completed]
+        message:
+          type: string
+        tokenSymbol:
+          type: ["string", "null"]
+        tokenAddress:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - type
+        - message
+        - tokenSymbol
+        - tokenAddress
+        - createdAt
