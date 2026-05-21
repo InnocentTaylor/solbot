@@ -1,6 +1,7 @@
 import { db, botConfigTable, positionsTable, tradesTable, activityTable } from "@workspace/db";
-import { eq, desc, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { buyToken, sellToken, getTokenDecimals, getWalletPublicKey } from "./swapService";
 
 interface DexScreenerToken {
   chainId: string;
@@ -55,22 +56,6 @@ async function logActivity(
   }
 }
 
-async function fetchMemeTokens(): Promise<DexScreenerToken[]> {
-  try {
-    const url =
-      "https://api.dexscreener.com/token-profiles/latest/v1?chainIds=solana";
-    const res = await fetch(url, {
-      headers: { Accept: "application/json" },
-    });
-    if (!res.ok) return [];
-    const data = (await res.json()) as { pairs?: DexScreenerToken[] };
-    return data.pairs ?? [];
-  } catch (err) {
-    logger.error({ err }, "Failed to fetch meme tokens from DexScreener");
-    return [];
-  }
-}
-
 async function fetchSolanaNewTokens(): Promise<DexScreenerToken[]> {
   try {
     const res = await fetch(
@@ -95,10 +80,7 @@ async function fetchSolanaNewTokens(): Promise<DexScreenerToken[]> {
 async function getConfig() {
   const configs = await db.select().from(botConfigTable).limit(1);
   if (configs.length === 0) {
-    const [newConfig] = await db
-      .insert(botConfigTable)
-      .values({})
-      .returning();
+    const [newConfig] = await db.insert(botConfigTable).values({}).returning();
     return newConfig;
   }
   return configs[0];
@@ -109,12 +91,17 @@ async function executeBuy(token: DexScreenerToken, config: typeof botConfigTable
   if (priceUsd <= 0) return;
 
   const amountUsd = 100;
-  const amountTokens = amountUsd / priceUsd;
 
-  const txSig =
-    "sim_" +
-    Math.random().toString(36).substring(2, 15) +
-    Math.random().toString(36).substring(2, 15);
+  logger.info({ token: token.baseToken.symbol, amountUsd }, "Attempting real buy via Jupiter");
+
+  const { signature, amountOut } = await buyToken(
+    token.baseToken.address,
+    amountUsd,
+    config.slippageBps,
+  );
+
+  const txStatus = signature ? "confirmed" : "failed";
+  const amountTokens = amountOut > 0 ? amountOut : amountUsd / priceUsd;
 
   const [position] = await db
     .insert(positionsTable)
@@ -130,7 +117,7 @@ async function executeBuy(token: DexScreenerToken, config: typeof botConfigTable
       amountUsd: String(amountUsd),
       unrealizedPnlUsd: "0",
       unrealizedPnlPct: "0",
-      status: "open",
+      status: signature ? "open" : "closed",
     })
     .returning();
 
@@ -143,23 +130,29 @@ async function executeBuy(token: DexScreenerToken, config: typeof botConfigTable
     amountTokens: String(amountTokens),
     priceUsd: String(priceUsd),
     marketCapUsd: String(token.marketCap),
-    txSignature: txSig,
-    status: "confirmed",
+    txSignature: signature,
+    status: txStatus,
     realizedPnlUsd: null,
     positionId: position.id,
   });
 
-  await logActivity(
-    "buy_executed",
-    `Bought ${token.baseToken.symbol} at $${priceUsd.toFixed(6)} (mcap: $${(token.marketCap / 1000).toFixed(1)}K)`,
-    token.baseToken.symbol,
-    token.baseToken.address,
-  );
-
-  logger.info(
-    { token: token.baseToken.symbol, mcap: token.marketCap },
-    "Buy executed",
-  );
+  if (signature) {
+    await logActivity(
+      "buy_executed",
+      `Bought ${token.baseToken.symbol} at $${priceUsd.toFixed(8)} (mcap: $${(token.marketCap / 1000).toFixed(1)}K) — tx: ${signature.slice(0, 12)}...`,
+      token.baseToken.symbol,
+      token.baseToken.address,
+    );
+    logger.info({ token: token.baseToken.symbol, sig: signature }, "Buy confirmed on-chain");
+  } else {
+    await logActivity(
+      "buy_failed",
+      `Buy failed for ${token.baseToken.symbol} — swap route unavailable or insufficient funds`,
+      token.baseToken.symbol,
+      token.baseToken.address,
+    );
+    logger.warn({ token: token.baseToken.symbol }, "Buy swap failed");
+  }
 }
 
 async function executeSell(
@@ -168,24 +161,38 @@ async function executeSell(
 ) {
   const currentPrice = parseFloat(currentToken.priceUsd || "0");
   const amountTokens = parseFloat(position.amountTokens);
-  const amountUsd = amountTokens * currentPrice;
-  const entryUsd = parseFloat(position.amountUsd);
-  const pnl = amountUsd - entryUsd;
 
-  const txSig =
-    "sim_" +
-    Math.random().toString(36).substring(2, 15) +
-    Math.random().toString(36).substring(2, 15);
+  logger.info({ token: position.tokenSymbol, amountTokens }, "Attempting real sell via Jupiter");
+
+  await db
+    .update(positionsTable)
+    .set({ status: "pending_sell" })
+    .where(eq(positionsTable.id, position.id));
+
+  const decimals = await getTokenDecimals(position.tokenAddress);
+  const { signature, amountOut } = await sellToken(
+    position.tokenAddress,
+    amountTokens,
+    decimals,
+    6,
+  );
+
+  const actualAmountUsd = amountOut > 0 ? amountOut : amountTokens * currentPrice;
+  const entryUsd = parseFloat(position.amountUsd);
+  const pnl = actualAmountUsd - entryUsd;
+
+  const txStatus = signature ? "confirmed" : "failed";
+  const newStatus = signature ? "closed" : "open";
 
   await db
     .update(positionsTable)
     .set({
-      status: "closed",
+      status: newStatus,
       currentPriceUsd: String(currentPrice),
       currentMarketCapUsd: String(currentToken.marketCap),
-      closedAt: new Date(),
-      unrealizedPnlUsd: "0",
-      unrealizedPnlPct: "0",
+      closedAt: signature ? new Date() : null,
+      unrealizedPnlUsd: signature ? "0" : String(actualAmountUsd - entryUsd),
+      unrealizedPnlPct: signature ? "0" : String(entryUsd > 0 ? ((actualAmountUsd - entryUsd) / entryUsd) * 100 : 0),
     })
     .where(eq(positionsTable.id, position.id));
 
@@ -194,27 +201,33 @@ async function executeSell(
     tokenSymbol: position.tokenSymbol,
     tokenName: position.tokenName,
     type: "sell",
-    amountUsd: String(amountUsd),
+    amountUsd: String(actualAmountUsd),
     amountTokens: String(amountTokens),
     priceUsd: String(currentPrice),
     marketCapUsd: String(currentToken.marketCap),
-    txSignature: txSig,
-    status: "confirmed",
-    realizedPnlUsd: String(pnl),
+    txSignature: signature,
+    status: txStatus,
+    realizedPnlUsd: signature ? String(pnl) : null,
     positionId: position.id,
   });
 
-  await logActivity(
-    "sell_executed",
-    `Sold ${position.tokenSymbol} at $${currentPrice.toFixed(6)} — PnL: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`,
-    position.tokenSymbol,
-    position.tokenAddress,
-  );
-
-  logger.info(
-    { token: position.tokenSymbol, pnl },
-    "Sell executed",
-  );
+  if (signature) {
+    await logActivity(
+      "sell_executed",
+      `Sold ${position.tokenSymbol} at $${currentPrice.toFixed(8)} — PnL: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} — tx: ${signature.slice(0, 12)}...`,
+      position.tokenSymbol,
+      position.tokenAddress,
+    );
+    logger.info({ token: position.tokenSymbol, pnl, sig: signature }, "Sell confirmed on-chain");
+  } else {
+    await logActivity(
+      "sell_failed",
+      `Sell failed for ${position.tokenSymbol} — position remains open`,
+      position.tokenSymbol,
+      position.tokenAddress,
+    );
+    logger.warn({ token: position.tokenSymbol }, "Sell swap failed");
+  }
 }
 
 async function scanLoop() {
@@ -236,14 +249,10 @@ async function scanLoop() {
 
     for (const token of tokens) {
       const mcap = token.marketCap;
-      const sym = token.baseToken.symbol;
       const addr = token.baseToken.address;
 
       if (!state.watchedTokens.has(addr)) {
-        state.watchedTokens.set(addr, {
-          ...token,
-          firstDiscoveredAt: new Date(),
-        });
+        state.watchedTokens.set(addr, { ...token, firstDiscoveredAt: new Date() });
       } else {
         const existing = state.watchedTokens.get(addr)!;
         state.watchedTokens.set(addr, { ...existing, ...token });
@@ -334,12 +343,17 @@ export function getWatchedTokens() {
 
 export async function startBot(): Promise<void> {
   if (state.running) return;
+
+  const walletKey = getWalletPublicKey();
   state.running = true;
   state.startedAt = new Date();
   state.tokensScanned = 0;
 
-  await logActivity("bot_started", "Bot started — monitoring Solana meme tokens");
-  logger.info("Bot started");
+  await logActivity(
+    "bot_started",
+    `Bot started with wallet ${walletKey.slice(0, 8)}...${walletKey.slice(-4)} — live trading enabled`,
+  );
+  logger.info({ wallet: walletKey }, "Bot started with live trading");
 
   await scanLoop();
 
