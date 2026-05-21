@@ -9,7 +9,8 @@ import bs58 from "bs58";
 import { logger } from "../lib/logger";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
-const RPC_ENDPOINT = "https://api.mainnet-beta.solana.com";
+const RPC_ENDPOINT =
+  process.env.RPC_ENDPOINT ?? "https://api.mainnet-beta.solana.com";
 
 let _keypair: Keypair | null = null;
 
