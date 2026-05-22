@@ -1,5 +1,6 @@
 [build]
 builder = "NIXPACKS"
+installCommand = "pnpm i --no-frozen-lockfile"
 buildCommand = "npm install -g pnpm@10 && pnpm install --no-frozen-lockfile && BASE_PATH=/ pnpm --filter @workspace/sol-bot run build && pnpm --filter @workspace/api-server run build"
 
 [deploy]
