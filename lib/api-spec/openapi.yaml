@@ -36,6 +36,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
 
+  /healthz/detailed:
+    get:
+      operationId: getDetailedHealth
+      tags: [health]
+      summary: Detailed system health check
+      responses:
+        "200":
+          description: Detailed health status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetailedHealth"
+
   /bot/status:
     get:
       operationId: getBotStatus
@@ -217,6 +230,53 @@ components:
           type: string
       required:
         - status
+
+    DetailedHealth:
+      type: object
+      properties:
+        status:
+          type: string
+        bot:
+          type: object
+          properties:
+            running:
+              type: boolean
+            uptime:
+              type: ["integer", "null"]
+            lastScanAt:
+              type: ["string", "null"]
+            tokensScanned:
+              type: integer
+            isStale:
+              type: boolean
+          required: [running, uptime, lastScanAt, tokensScanned, isStale]
+        rpc:
+          type: object
+          properties:
+            status:
+              type: string
+            latencyMs:
+              type: ["integer", "null"]
+            provider:
+              type: string
+          required: [status, latencyMs, provider]
+        wallet:
+          type: object
+          properties:
+            address:
+              type: ["string", "null"]
+          required: [address]
+        watchedTokens:
+          type: integer
+        timestamp:
+          type: string
+      required:
+        - status
+        - bot
+        - rpc
+        - wallet
+        - watchedTokens
+        - timestamp
 
     BotStatus:
       type: object

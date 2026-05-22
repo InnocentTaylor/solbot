@@ -17,6 +17,31 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * @summary Detailed system health check
+ */
+export const GetDetailedHealthResponse = zod.object({
+  "status": zod.string(),
+  "bot": zod.object({
+  "running": zod.boolean(),
+  "uptime": zod.number().nullable(),
+  "lastScanAt": zod.string().nullable(),
+  "tokensScanned": zod.number(),
+  "isStale": zod.boolean()
+}),
+  "rpc": zod.object({
+  "status": zod.string(),
+  "latencyMs": zod.number().nullable(),
+  "provider": zod.string()
+}),
+  "wallet": zod.object({
+  "address": zod.string().nullable()
+}),
+  "watchedTokens": zod.number(),
+  "timestamp": zod.string()
+})
+
+
+/**
  * @summary Get bot running status
  */
 export const GetBotStatusResponse = zod.object({

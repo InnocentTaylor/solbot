@@ -9,8 +9,15 @@ import bs58 from "bs58";
 import { logger } from "../lib/logger";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
-const RPC_ENDPOINT =
-  process.env.RPC_ENDPOINT ?? "https://api.mainnet-beta.solana.com";
+
+function getRpcEndpoint(): string {
+  if (process.env.RPC_ENDPOINT) return process.env.RPC_ENDPOINT;
+  if (process.env.HELIUS_API_KEY)
+    return `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`;
+  return "https://api.mainnet-beta.solana.com";
+}
+
+const RPC_ENDPOINT = getRpcEndpoint();
 
 let _keypair: Keypair | null = null;
 
