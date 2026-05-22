@@ -25,6 +25,7 @@ import type {
   BotConfigInput,
   BotStatus,
   DashboardSummary,
+  DetailedHealth,
   HealthStatus,
   ListTradesParams,
   Position,
@@ -109,6 +110,83 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getHealthCheckQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetDetailedHealthUrl = () => {
+
+
+
+
+  return `/api/healthz/detailed`
+}
+
+/**
+ * @summary Detailed system health check
+ */
+export const getDetailedHealth = async ( options?: RequestInit): Promise<DetailedHealth> => {
+
+  return customFetch<DetailedHealth>(getGetDetailedHealthUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDetailedHealthQueryKey = () => {
+    return [
+    `/api/healthz/detailed`
+    ] as const;
+    }
+
+
+export const getGetDetailedHealthQueryOptions = <TData = Awaited<ReturnType<typeof getDetailedHealth>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDetailedHealth>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDetailedHealthQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDetailedHealth>>> = ({ signal }) => getDetailedHealth({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDetailedHealth>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDetailedHealthQueryResult = NonNullable<Awaited<ReturnType<typeof getDetailedHealth>>>
+export type GetDetailedHealthQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Detailed system health check
+ */
+
+export function useGetDetailedHealth<TData = Awaited<ReturnType<typeof getDetailedHealth>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDetailedHealth>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDetailedHealthQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

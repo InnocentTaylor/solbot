@@ -9,6 +9,37 @@ export interface HealthStatus {
   status: string;
 }
 
+export type DetailedHealthBot = {
+  running: boolean;
+  /** @nullable */
+  uptime: number | null;
+  /** @nullable */
+  lastScanAt: string | null;
+  tokensScanned: number;
+  isStale: boolean;
+};
+
+export type DetailedHealthRpc = {
+  status: string;
+  /** @nullable */
+  latencyMs: number | null;
+  provider: string;
+};
+
+export type DetailedHealthWallet = {
+  /** @nullable */
+  address: string | null;
+};
+
+export interface DetailedHealth {
+  status: string;
+  bot: DetailedHealthBot;
+  rpc: DetailedHealthRpc;
+  wallet: DetailedHealthWallet;
+  watchedTokens: number;
+  timestamp: string;
+}
+
 export interface BotStatus {
   running: boolean;
   /** @nullable */
