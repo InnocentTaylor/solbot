@@ -37,6 +37,11 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="text-center py-4 px-6 mb-2 rounded-lg border border-green-500/20 bg-green-500/5">
+  <p className="text-green-400 text-sm font-medium">🙏 All glory to YAHWEH — the architect of this moment</p>
+  <p className="text-gray-400 text-xs mt-1">Built by <span className="text-white font-semibold">Figadstro</span> as a vessel of His provision. May every wallet that connects here find favour, wisdom and profit.</p>
+  <p className="text-green-500 text-xs mt-1 font-medium">Happy trading & YAHWEH bless you 🚀</p>
+</div>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
